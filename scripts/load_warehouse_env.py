@@ -25,8 +25,49 @@ simulation_app = SimulationApp(launch_config=CONFIG)
 
 # Import after SimulationApp is created
 import omni.usd
+import omni.kit.app
 from pxr import Gf, UsdGeom, UsdLux, UsdPhysics
 import carb
+
+# =============================================================================
+# ENABLE OMNIGRAPH AND ROS2 EXTENSIONS
+# =============================================================================
+
+EXTENSIONS_TO_ENABLE = [
+    # OmniGraph core extensions
+    "omni.graph.core",
+    "omni.graph.action",
+    "omni.graph.nodes",
+    "omni.graph.scriptnode",
+    "omni.graph.window.action",      # Action Graph Editor window
+    "omni.graph.window.generic",     # Visual Scripting window
+    # ROS2 Bridge extensions (requires ROS2 env vars set before starting)
+    "isaacsim.ros2.bridge",
+]
+
+def enable_extensions():
+    """Enable required OmniGraph and ROS2 extensions"""
+    print("=" * 60)
+    print("Enabling OmniGraph and ROS2 extensions...")
+    print("=" * 60)
+    
+    manager = omni.kit.app.get_app().get_extension_manager()
+    
+    for ext_name in EXTENSIONS_TO_ENABLE:
+        try:
+            manager.set_extension_enabled_immediate(ext_name, True)
+            print(f"  ✓ Enabled: {ext_name}")
+        except Exception as e:
+            print(f"  ✗ Failed to enable {ext_name}: {e}")
+    
+    # Wait for extensions to load
+    for _ in range(10):
+        simulation_app.update()
+    
+    print("Extensions enabled successfully!")
+
+# Enable extensions
+enable_extensions()
 
 # =============================================================================
 # CONFIGURATION
