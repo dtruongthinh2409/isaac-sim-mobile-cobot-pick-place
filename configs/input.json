@@ -1,0 +1,5 @@
+{
+  "grasp_order": ["Red", "TextureObject", "Green", "Blue"],
+  "start_table": 2,
+  "target_table": 1
+}
