@@ -81,23 +81,6 @@ def generate_launch_description():
         ],
     )
 
-    # Static TF
-    world2robot_tf_node = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name="static_transform_publisher_world_to_robot",
-        output="log",
-        arguments=[
-            "-4.7",
-            "-6.1",
-            "0.8",
-            "0.0",
-            "0.0",
-            "0.0",
-            "world",
-            "panda_link0"],
-        parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
-    )
     hand2camera_tf_node = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
@@ -113,6 +96,16 @@ def generate_launch_description():
             "panda_hand",
             "sim_camera",
         ],
+        parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
+    )
+
+    # Static TF: chassis_link -> panda_link0 (fixed mount, Z offset = 0.4125m)
+    chassis2arm_tf_node = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="static_transform_publisher_chassis_to_arm",
+        output="log",
+        arguments=["0.0", "0.0", "0.4125", "0.0", "0.0", "0.0", "chassis_link", "panda_link0"],
         parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
     )
 
@@ -181,7 +174,7 @@ def generate_launch_description():
             ros2_control_hardware_type,
             use_sim_time,  # Declare use_sim_time argument here
             rviz_node,
-            world2robot_tf_node,
+            chassis2arm_tf_node,
             hand2camera_tf_node,
             robot_state_publisher,
             move_group_node,
