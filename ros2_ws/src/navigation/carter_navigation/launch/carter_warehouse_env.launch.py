@@ -219,6 +219,16 @@ def generate_launch_description():
                     namespace=robot["name"]
                 ),
 
+                # Scan QoS relay: BEST_EFFORT -> RELIABLE (fixes AMCL QoS mismatch)
+                Node(
+                    package='carter_navigation',
+                    executable='scan_qos_relay.py',
+                    name='scan_qos_relay',
+                    namespace=robot["name"],
+                    parameters=[{'use_sim_time': True}],
+                    output='screen'
+                ),
+
                 # Relay /carter/clock to /clock (for use_sim_time)
                 Node(
                     package='topic_tools',
@@ -237,13 +247,22 @@ def generate_launch_description():
                     parameters=[{'use_sim_time': True}]
                 ),
 
-                # Static TF: base_link -> front_3d_lidar (exact position from robot model)
+                # Static TF: base_link -> front_3d_lidar (publishes on /tf_static global)
                 Node(
                     package='tf2_ros',
                     executable='static_transform_publisher',
                     name='static_tf_lidar',
                     arguments=['-0.2317', '0', '0.526', '0', '0', '0', 'base_link', 'front_3d_lidar'],
-                    parameters=[{'use_sim_time': True}]
+                    parameters=[{'use_sim_time': True}],
+                ),
+
+                # Relay /tf_static -> /carter/tf_static (Nav2 in carter namespace needs this)
+                Node(
+                    package='carter_navigation',
+                    executable='tf_static_relay.py',
+                    name='tf_static_relay',
+                    parameters=[{'use_sim_time': False}],
+                    output='screen'
                 ),
 
                 LogInfo(condition=IfCondition(log_settings), msg=["Launching ", robot["name"]]),
