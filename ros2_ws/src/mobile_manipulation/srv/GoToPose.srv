@@ -1,0 +1,5 @@
+geometry_msgs/PoseStamped target_pose
+bool cartesian_path
+---
+bool success
+string message
