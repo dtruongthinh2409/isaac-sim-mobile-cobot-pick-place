@@ -4,6 +4,7 @@
 import os
 import sys
 import json
+import math
 import random
 
 from isaacsim import SimulationApp
@@ -140,6 +141,25 @@ ROBOT_AT_TABLE_2 = [TABLE_2_POS[0], TABLE_2_POS[1] + ROBOT_DISTANCE_FROM_TABLE, 
 
 # Robot rotation to face the table (facing -Y direction, so rotate 270 degrees around Z)
 ROBOT_FACING_TABLE_ROTATION = [0, 0, -90]  # Degrees: facing -Y direction
+
+# Robot HOME position
+ROBOT_HOME_POSITION = [
+    env_config.get('ROBOT_HOME_X', -2.5),
+    env_config.get('ROBOT_HOME_Y', -1.5),
+    env_config.get('ROBOT_HOME_Z', 0.0)
+]
+ROBOT_HOME_ROTATION = [0, 0, -90]  # Degrees: facing -Y direction
+
+# Arm initial joint positions: stowed_back pose 
+ARM_INITIAL_JOINTS_DEG = {
+    "panda_joint1": -166.0,
+    "panda_joint2": -25.1,
+    "panda_joint3": -21.8,
+    "panda_joint4": -160.0,
+    "panda_joint5": -115.5,
+    "panda_joint6": 165.3,
+    "panda_joint7": 42.7,
+}
 
 # Navigation goal positions (for Nav2)
 NAV_GOAL_TABLE_1 = {
@@ -293,23 +313,14 @@ def spawn_objects(stage, config):
 
 
 def spawn_robot(stage, config):
-    """Spawn Mobile Manipulator robot at the start table position"""
+    """Spawn Mobile Manipulator robot at HOME position (before navigation)"""
     start_table = config.get("start_table", 1)
     target_table = config.get("target_table", 2)
     
-    # Determine robot spawn position based on start_table
-    if start_table == 1:
-        robot_pos = ROBOT_AT_TABLE_1.copy()
-        robot_rot = ROBOT_FACING_TABLE_ROTATION.copy()
-        nav_goal_start = NAV_GOAL_TABLE_1
-        nav_goal_target = NAV_GOAL_TABLE_2
-        print(f"Robot starting at Table 1: position {robot_pos}")
-    else:
-        robot_pos = ROBOT_AT_TABLE_2.copy()
-        robot_rot = ROBOT_FACING_TABLE_ROTATION.copy()
-        nav_goal_start = NAV_GOAL_TABLE_2
-        nav_goal_target = NAV_GOAL_TABLE_1
-        print(f"Robot starting at Table 2: position {robot_pos}")
+    # Spawn at HOME position (not at table)
+    # Robot will navigate to start_table using Nav2 after simulation starts
+    robot_pos = ROBOT_HOME_POSITION.copy()
+    robot_rot = ROBOT_HOME_ROTATION.copy()
     
     # Check if robot USD exists
     if not os.path.exists(ROBOT_USD):
@@ -321,10 +332,11 @@ def spawn_robot(stage, config):
     
     print("=" * 60)
     print("ROBOT SPAWN INFO:")
+    print(f"  Spawn: HOME position (midpoint between tables)")
+    print(f"  Position: x={robot_pos[0]:.2f}, y={robot_pos[1]:.2f}, z={robot_pos[2]:.2f}")
+    print(f"  Rotation: {robot_rot}")
     print(f"  Start Table: {start_table}")
     print(f"  Target Table: {target_table}")
-    print(f"  Robot Position: x={robot_pos[0]:.2f}, y={robot_pos[1]:.2f}, z={robot_pos[2]:.2f}")
-    print(f"  Robot Rotation: {robot_rot}")
     print("=" * 60)
     print("NAVIGATION GOALS (for Nav2):")
     print(f"  Goal Table 1: {NAV_GOAL_TABLE_1}")
@@ -332,6 +344,38 @@ def spawn_robot(stage, config):
     print("=" * 60)
     
     return robot_prim
+
+
+def set_arm_initial_joints(stage):
+    """Set Franka arm joints to stowed_back pose before simulation."""
+    print("Setting arm initial joints (stowed_back pose)...")
+    
+    set_count = 0
+    for prim in stage.Traverse():
+        prim_name = prim.GetName()
+        if prim_name in ARM_INITIAL_JOINTS_DEG:
+            target_deg = ARM_INITIAL_JOINTS_DEG[prim_name]
+            
+            # Set drive target position 
+            drive_api = UsdPhysics.DriveAPI.Get(prim, "angular")
+            if drive_api:
+                drive_api.GetTargetPositionAttr().Set(target_deg)
+            
+            # Set initial physics state
+            try:
+                from pxr import PhysxSchema
+                state_api = PhysxSchema.JointStateAPI.Apply(prim, "angular")
+                state_api.CreatePositionAttr().Set(target_deg)
+            except Exception:
+                pass  # PhysxSchema may not be available
+            
+            set_count += 1
+            print(f"  {prim_name} = {target_deg}° ({math.radians(target_deg):.4f} rad)")
+    
+    if set_count == 7:
+        print("All 7 arm joints set successfully!")
+    else:
+        print(f"WARNING: Only {set_count}/7 joints found. Check robot prim hierarchy.")
 
 
 def get_navigation_goals(config):
@@ -386,8 +430,15 @@ def main():
     # Spawn objects based on config
     spawn_objects(stage, config)
     
-    # Spawn robot at start table
+    # Spawn robot at HOME position (will navigate to tables via Nav2)
     spawn_robot(stage, config)
+    
+    # Wait for stage to fully compose 
+    for _ in range(5):
+        simulation_app.update()
+    
+    # Set arm joints to stowed_back pose (must match initial_positions.yaml)
+    set_arm_initial_joints(stage)
     
     # Get navigation goals for later use
     nav_goals = get_navigation_goals(config)
