@@ -60,8 +60,7 @@ def load_env_config(carter_nav_dir):
 
 
 def get_initial_pose_from_config(spawn_config, env_config):
-    """Calculate AMCL initial pose based on HOME position from .env"""
-    # Robot HOME position (where robot spawns before navigation)
+    """Calculate AMCL initial pose based on robot HOME position from .env"""
     x = env_config.get('ROBOT_HOME_X', -2.5)
     y = env_config.get('ROBOT_HOME_Y', -1.5)
     yaw = env_config.get('ROBOT_HOME_YAW', -1.57079)

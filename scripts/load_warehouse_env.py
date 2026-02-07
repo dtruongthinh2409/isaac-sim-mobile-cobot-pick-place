@@ -27,6 +27,7 @@ simulation_app = SimulationApp(launch_config=CONFIG)
 # Import after SimulationApp is created
 import omni.usd
 import omni.kit.app
+import omni.timeline
 from pxr import Gf, UsdGeom, UsdLux, UsdPhysics
 import carb
 
@@ -107,22 +108,22 @@ TABLE_2_POS = [
 ]  # Place station (right)
 
 # Table dimensions
-TABLE_HEIGHT = env_config.get('TABLE_HEIGHT', 0.65)
+TABLE_HEIGHT = env_config.get('TABLE_HEIGHT', 0.55)
 TABLE_TOP_THICKNESS = env_config.get('TABLE_TOP_THICKNESS', 0.03)
 
 # Metal box dimensions
-BOX_LENGTH = env_config.get('BOX_LENGTH', 0.4)
-BOX_WIDTH = env_config.get('BOX_WIDTH', 0.4)
-BOX_HEIGHT = env_config.get('BOX_HEIGHT', 0.08)
+BOX_LENGTH = env_config.get('BOX_LENGTH', 0.56)
+BOX_WIDTH = env_config.get('BOX_WIDTH', 0.56)
+BOX_HEIGHT = env_config.get('BOX_HEIGHT', 0.05)
 WALL_THICKNESS = env_config.get('WALL_THICKNESS', 0.02)
 
 # Metal box Z position (on top of table)
 BOX_Z = TABLE_HEIGHT + TABLE_TOP_THICKNESS / 2 + WALL_THICKNESS / 2
 
 # Object spawn settings
-DROP_HEIGHT = env_config.get('DROP_HEIGHT', 0.15)
-SPAWN_MARGIN = env_config.get('SPAWN_MARGIN', 0.08)
-MIN_OBJECT_DISTANCE = env_config.get('MIN_OBJECT_DISTANCE', 0.15)
+DROP_HEIGHT = env_config.get('DROP_HEIGHT', 0.03)
+SPAWN_MARGIN = env_config.get('SPAWN_MARGIN', 0.10)
+MIN_OBJECT_DISTANCE = env_config.get('MIN_OBJECT_DISTANCE', 0.12)
 
 # =============================================================================
 # ROBOT CONFIGURATION
@@ -257,7 +258,7 @@ def get_random_spawn_position(table_pos, box_z):
 
 
 def spawn_objects(stage, config):
-    """Spawn 4 objects on the start table"""
+    """Spawn 4 objects on the start table (positions saved AFTER physics settle)."""
     start_table = config.get("start_table", 1)
     
     # Get table position based on start_table
@@ -309,7 +310,56 @@ def spawn_objects(stage, config):
         prim_path = f"/World/Objects/{obj_name}"
         
         add_asset(stage, usd_path, prim_path, pos, rotation)
-        print(f"  {obj_name} at [{pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f}], rot: ({rot_x:.1f}, {rot_y:.1f}, {rot_z:.1f})°")
+        print(f"  {obj_name} spawn at [{pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f}], rot: ({rot_x:.1f}, {rot_y:.1f}, {rot_z:.1f})°")
+    
+    print("NOTE: Object positions will be saved AFTER physics settle (when Play is pressed).")
+
+
+def query_settled_object_positions(stage):
+    """Query real object positions from Isaac Sim after physics settle.
+    
+    Must be called AFTER simulation has run for a few seconds so objects
+    have fallen and settled in the metal box.
+    
+    Returns dict: {"Red": {"x": ..., "y": ..., "z": ...}, ...}
+    """
+    objects_to_query = ["Red", "Green", "Blue", "TextureObject"]
+    object_positions = {}
+    
+    print("=" * 60)
+    print("QUERYING SETTLED OBJECT POSITIONS...")
+    print("=" * 60)
+    
+    for obj_name in objects_to_query:
+        prim_path = f"/World/Objects/{obj_name}"
+        prim = stage.GetPrimAtPath(prim_path)
+        
+        if not prim.IsValid():
+            print(f"  WARNING: {prim_path} not found!")
+            continue
+        
+        # Get world transform after physics settle
+        xformable = UsdGeom.Xformable(prim)
+        world_transform = xformable.ComputeLocalToWorldTransform(0)
+        translation = world_transform.ExtractTranslation()
+        
+        object_positions[obj_name] = {
+            "x": round(float(translation[0]), 4),
+            "y": round(float(translation[1]), 4),
+            "z": round(float(translation[2]), 4)
+        }
+        
+        print(f"  {obj_name}: [{translation[0]:.4f}, {translation[1]:.4f}, {translation[2]:.4f}]")
+    
+    # Save to JSON
+    obj_pos_path = os.path.join(CONFIGS_DIR, "object_positions.json")
+    with open(obj_pos_path, 'w') as f:
+        json.dump(object_positions, f, indent=2)
+    
+    print(f"Settled positions saved to: {obj_pos_path}")
+    print("=" * 60)
+    
+    return object_positions
 
 
 def spawn_robot(stage, config):
@@ -450,9 +500,37 @@ def main():
     distant_light.CreateIntensityAttr(100)
     distant_light.CreateAngleAttr(0.53)
     
-    # Main loop
+    # Main loop — wait for Play, then query settled positions
+    print("")
+    print("=" * 60)
+    print("SCENE READY! Press Play in Isaac Sim UI.")
+    print("Objects will be queried after 3 seconds of simulation.")
+    print("=" * 60)
+    
+    positions_saved = False
+    settle_frames = 0
+    SETTLE_WAIT_FRAMES = 180  # ~3 seconds at 60fps
+    
     while simulation_app.is_running():
         simulation_app.update()
+        
+        # After simulation starts (Play pressed), wait for objects to settle
+        if not positions_saved:
+            # Check if simulation is playing
+            timeline = omni.timeline.get_timeline_interface()
+            
+            if timeline.is_playing():
+                settle_frames += 1
+                
+                if settle_frames == 1:
+                    print("Simulation started! Waiting for objects to settle...")
+                
+                if settle_frames >= SETTLE_WAIT_FRAMES:
+                    # Query settled positions
+                    stage = omni.usd.get_context().get_stage()
+                    query_settled_object_positions(stage)
+                    positions_saved = True
+                    print("Ready for orchestrator! You can now run task_executor.py")
     
     simulation_app.close()
 
