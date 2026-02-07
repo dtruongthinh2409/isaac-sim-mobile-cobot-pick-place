@@ -60,25 +60,13 @@ def load_env_config(carter_nav_dir):
 
 
 def get_initial_pose_from_config(spawn_config, env_config):
-    """Calculate AMCL initial pose based on spawn config and environment"""
-    # Load table positions from .env (with defaults)
-    table_1_x = env_config.get('TABLE_1_X', -4.0)
-    table_1_y = env_config.get('TABLE_1_Y', -3.0)
-    table_2_x = env_config.get('TABLE_2_X', -1.0)
-    table_2_y = env_config.get('TABLE_2_Y', -3.0)
-    robot_distance = env_config.get('ROBOT_DISTANCE_FROM_TABLE', 0.5)
-    robot_yaw = env_config.get('ROBOT_YAW', -1.57079)
+    """Calculate AMCL initial pose based on HOME position from .env"""
+    # Robot HOME position (where robot spawns before navigation)
+    x = env_config.get('ROBOT_HOME_X', -2.5)
+    y = env_config.get('ROBOT_HOME_Y', -1.5)
+    yaw = env_config.get('ROBOT_HOME_YAW', -1.57079)
     
-    start_table = spawn_config.get("start_table", 1)
-    
-    if start_table == 1:
-        x = table_1_x
-        y = table_1_y + robot_distance
-    else:
-        x = table_2_x
-        y = table_2_y + robot_distance
-    
-    return {'x': x, 'y': y, 'z': 0.0, 'yaw': robot_yaw}
+    return {'x': x, 'y': y, 'z': 0.0, 'yaw': yaw}
 
 
 def generate_launch_description():
@@ -95,8 +83,9 @@ def generate_launch_description():
     initial_pose = get_initial_pose_from_config(robot_config, env_config)
     
     print(f"=" * 60)
-    print(f"Robot spawns at Table {robot_config.get('start_table', 1)}")
+    print(f"Robot spawns at HOME position")
     print(f"AMCL initial pose: x={initial_pose['x']:.2f}, y={initial_pose['y']:.2f}, yaw={initial_pose['yaw']:.3f}")
+    print(f"Start Table: {robot_config.get('start_table', 1)}, Target Table: {robot_config.get('target_table', 2)}")
     print(f"=" * 60)
 
     nav2_bringup_dir = get_package_share_directory("nav2_bringup")
